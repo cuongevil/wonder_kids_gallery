@@ -1,5 +1,5 @@
 name: wonder_kids_gallery
-description: "Thư viện ảnh + prompt"
+description: "Gallery ảnh + prompt AI trending của hệ sinh thái Wonder Kids"
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 
 version: 1.0.0+1
@@ -10,8 +10,14 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  http: ^1.2.0
+  cached_network_image: ^3.3.0
+  share_plus: ^10.0.0
 
   cupertino_icons: ^1.0.8
+  firebase_core: ^4.1.1
+  firebase_storage: ^13.0.2
+  firebase_app_check: ^0.4.1
 
 dev_dependencies:
   flutter_test:

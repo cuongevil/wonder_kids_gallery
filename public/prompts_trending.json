@@ -1,0 +1,46 @@
+{
+  "updatedAt": "2025-10-07T10:00:00+07:00",
+  "items": [
+    {
+      "id": "chibi_math_001",
+      "title": "Chibi học toán",
+      "image": "https://firebasestorage.googleapis.com/v0/b/REPLACE_YOUR_BUCKET.appspot.com/o/trends%2Fchibi_math.png?alt=media",
+      "prompt": "Cute chibi kid solving math problems, pastel classroom background, kawaii style, soft light, PNG transparent",
+      "tags": [
+        "math",
+        "chibi",
+        "kawaii",
+        "learning"
+      ],
+      "category": "education",
+      "trendDate": "2025-10-07"
+    },
+    {
+      "id": "mascot_fox_01",
+      "title": "Linh vật cáo học chữ",
+      "image": "https://firebasestorage.googleapis.com/v0/b/REPLACE_YOUR_BUCKET.appspot.com/o/trends%2Fmascot_fox.png?alt=media",
+      "prompt": "Friendly fox mascot holding alphabet cards, pastel color, cute kids illustration, 3D soft lighting",
+      "tags": [
+        "alphabet",
+        "mascot",
+        "fox",
+        "kids"
+      ],
+      "category": "alphabet",
+      "trendDate": "2025-10-06"
+    },
+    {
+      "id": "badge_star_01",
+      "title": "Huy hiệu ngôi sao",
+      "image": "https://firebasestorage.googleapis.com/v0/b/REPLACE_YOUR_BUCKET.appspot.com/o/trends%2Fbadge_star.png?alt=media",
+      "prompt": "Kid-friendly math badge: golden star with subtle confetti burst, glossy finish, clean outline, vector look, PNG transparent",
+      "tags": [
+        "badge",
+        "star",
+        "reward"
+      ],
+      "category": "ui-badge",
+      "trendDate": "2025-10-05"
+    }
+  ]
+}

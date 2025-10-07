@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "376757433313",
+    "project_id": "wonder-kids-gallery",
+    "storage_bucket": "wonder-kids-gallery.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:376757433313:android:4475d6e9869d73caa698a0",
+        "android_client_info": {
+          "package_name": "com.ctmd.wonderforge.wonder_kids_gallery"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCddwg9w36ab0LK7eKVTOhQo8QwARRwepw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
