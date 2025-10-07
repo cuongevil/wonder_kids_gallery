@@ -66,3 +66,12 @@ Generated.xcconfig
 *.jks
 *.keystore
 key.properties
+
+# Firebase local & secrets
+.firebase/
+google-services.json
+GoogleService-Info.plist
+
+# IDE & OS
+.vscode/
+Thumbs.db
