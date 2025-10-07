@@ -1,4 +1,4 @@
-package com.example.wonder_kids_gallery
+package com.ctmd.wonderforge.wonder_kids_gallery
 
 import io.flutter.embedding.android.FlutterActivity
 
