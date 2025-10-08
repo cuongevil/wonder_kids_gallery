@@ -1,9 +1,13 @@
-import 'dart:convert';
 import 'dart:async';
+import 'dart:convert';
+import 'dart:ui';
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:http/http.dart' as http;
+import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:shimmer/shimmer.dart';
 
@@ -56,7 +60,10 @@ class AppTheme {
           borderRadius: BorderRadius.circular(24),
           borderSide: const BorderSide(color: primarySoft, width: 1.5),
         ),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 14,
+        ),
       ),
     );
   }
@@ -121,11 +128,15 @@ class _GalleryScreenState extends State<GalleryScreen>
   @override
   void initState() {
     super.initState();
-    _fadeCtrl =
-        AnimationController(vsync: this, duration: const Duration(milliseconds: 800));
+    _fadeCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 800),
+    );
     _fadeAnim = CurvedAnimation(parent: _fadeCtrl, curve: Curves.easeInOut);
-    _slideAnim = Tween<Offset>(begin: const Offset(0, 0.3), end: Offset.zero)
-        .animate(CurvedAnimation(parent: _fadeCtrl, curve: Curves.easeOut));
+    _slideAnim = Tween<Offset>(
+      begin: const Offset(0, 0.3),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(parent: _fadeCtrl, curve: Curves.easeOut));
 
     _loadTrending();
     _scroll.addListener(_onScroll);
@@ -236,8 +247,7 @@ class _GalleryScreenState extends State<GalleryScreen>
     }
 
     final results = all
-        .where((it) =>
-        (it.title + ' ' + it.prompt).toLowerCase().contains(q))
+        .where((it) => (it.title + ' ' + it.prompt).toLowerCase().contains(q))
         .toList();
     setState(() {
       visible = results.take(batchSize).toList();
@@ -267,68 +277,67 @@ class _GalleryScreenState extends State<GalleryScreen>
             : (error != null)
             ? Center(child: Text(error!))
             : RefreshIndicator(
-          onRefresh: _onRefresh,
-          color: AppTheme.primary,
-          child: ListView(
-            controller: _scroll,
-            padding: const EdgeInsets.all(16),
-            children: [
-              TextField(
-                controller: _q,
-                onChanged: (_) => _applyFilters(),
-                decoration: const InputDecoration(
-                  prefixIcon: Icon(Icons.search_rounded),
-                  hintText: 'Tìm theo từ khoá / prompt...',
-                ),
-              ),
-              const SizedBox(height: 8),
-              if (updatedAt != null)
-                FadeTransition(
-                  opacity: _fadeAnim,
-                  child: SlideTransition(
-                    position: _slideAnim,
-                    child: Shimmer.fromColors(
-                      baseColor: AppTheme.inkSoft.withOpacity(0.4),
-                      highlightColor:
-                      AppTheme.primarySoft.withOpacity(0.6),
-                      period: const Duration(seconds: 3),
-                      child: Center(
-                        child: Text(
-                          "🕓 Dữ liệu cập nhật: ${_formatDate(updatedAt!)}",
-                          style: const TextStyle(
-                            fontSize: 13,
-                            color: AppTheme.inkSoft,
-                            fontStyle: FontStyle.italic,
+                onRefresh: _onRefresh,
+                color: AppTheme.primary,
+                child: ListView(
+                  controller: _scroll,
+                  padding: const EdgeInsets.all(16),
+                  children: [
+                    TextField(
+                      controller: _q,
+                      onChanged: (_) => _applyFilters(),
+                      decoration: const InputDecoration(
+                        prefixIcon: Icon(Icons.search_rounded),
+                        hintText: 'Tìm theo từ khoá / prompt...',
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    if (updatedAt != null)
+                      FadeTransition(
+                        opacity: _fadeAnim,
+                        child: SlideTransition(
+                          position: _slideAnim,
+                          child: Shimmer.fromColors(
+                            baseColor: AppTheme.inkSoft.withOpacity(0.4),
+                            highlightColor: AppTheme.primarySoft.withOpacity(
+                              0.6,
+                            ),
+                            period: const Duration(seconds: 3),
+                            child: Center(
+                              child: Text(
+                                "🕓 Dữ liệu cập nhật: ${_formatDate(updatedAt!)}",
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  color: AppTheme.inkSoft,
+                                  fontStyle: FontStyle.italic,
+                                ),
+                              ),
+                            ),
                           ),
                         ),
                       ),
+                    const SizedBox(height: 8),
+                    AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 300),
+                      child: visible.isEmpty
+                          ? const _EmptyState()
+                          : _GalleryGrid(items: visible),
                     ),
-                  ),
+                    if (isLoadingMore)
+                      const Padding(
+                        padding: EdgeInsets.all(16),
+                        child: Center(
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      ),
+                    if (!hasMore && visible.isNotEmpty)
+                      const Padding(
+                        padding: EdgeInsets.all(16),
+                        child: Center(child: Text('🎉 Hết prompt rồi nhé!')),
+                      ),
+                  ],
                 ),
-              const SizedBox(height: 8),
-              AnimatedSwitcher(
-                duration: const Duration(milliseconds: 300),
-                child: visible.isEmpty
-                    ? const _EmptyState()
-                    : _GalleryGrid(items: visible),
               ),
-              if (isLoadingMore)
-                const Padding(
-                  padding: EdgeInsets.all(16),
-                  child: Center(
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
-                ),
-              if (!hasMore && visible.isNotEmpty)
-                const Padding(
-                  padding: EdgeInsets.all(16),
-                  child: Center(
-                    child: Text('🎉 Hết prompt rồi nhé!'),
-                  ),
-                ),
-            ],
-          ),
-        ),
       ),
     );
   }
@@ -361,15 +370,17 @@ class _GalleryGrid extends StatelessWidget {
         childAspectRatio: .9,
       ),
       itemCount: items.length,
-      itemBuilder: (_, i) => _GalleryCard(item: items[i]),
+      itemBuilder: (_, i) => _GalleryCard(item: items[i], rootContext: context),
     );
   }
 }
 
-/// 🖼️ Card ảnh với hiệu ứng fade + zoom-in + hover sáng
+/// 🖼️ Card ảnh + popup chi tiết
 class _GalleryCard extends StatefulWidget {
   final PromptItem item;
-  const _GalleryCard({required this.item});
+  final BuildContext rootContext;
+
+  const _GalleryCard({required this.item, required this.rootContext});
 
   @override
   State<_GalleryCard> createState() => _GalleryCardState();
@@ -380,7 +391,6 @@ class _GalleryCardState extends State<_GalleryCard>
   late AnimationController _animCtrl;
   late Animation<double> _fadeAnim;
   late Animation<double> _scaleAnim;
-  bool _hovering = false;
 
   @override
   void initState() {
@@ -390,12 +400,13 @@ class _GalleryCardState extends State<_GalleryCard>
       duration: const Duration(milliseconds: 600),
     );
     _fadeAnim = CurvedAnimation(parent: _animCtrl, curve: Curves.easeInOut);
-    _scaleAnim = Tween<double>(begin: 0.95, end: 1.0).animate(
-      CurvedAnimation(parent: _animCtrl, curve: Curves.easeOutBack),
-    );
+    _scaleAnim = Tween<double>(
+      begin: 0.95,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _animCtrl, curve: Curves.easeOutBack));
     Future.delayed(
       Duration(milliseconds: 100 + (50 * (widget.item.id.hashCode % 5))),
-          () => _animCtrl.forward(),
+      () => _animCtrl.forward(),
     );
   }
 
@@ -405,71 +416,277 @@ class _GalleryCardState extends State<_GalleryCard>
     super.dispose();
   }
 
+  void _showDetail(BuildContext context) {
+    showGeneralDialog(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: 'Đóng popup',
+      barrierColor: Colors.black45,
+      pageBuilder: (_, __, ___) {
+        return GestureDetector(
+          onVerticalDragUpdate: (details) {
+            if (details.primaryDelta != null && details.primaryDelta! > 12) {
+              Navigator.of(context).pop();
+            }
+          },
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+            child: Center(
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final maxHeight = constraints.maxHeight * 0.8;
+                  return Dialog(
+                    insetPadding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 24,
+                    ),
+                    backgroundColor: Colors.white.withOpacity(0.92),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(24),
+                    ),
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(maxHeight: maxHeight),
+                      child: FutureBuilder<String>(
+                        future: _resolveImage(widget.item.image),
+                        builder: (context, snap) {
+                          return Column(
+                            children: [
+                              // 🔹 Ảnh trên cùng
+                              Stack(
+                                children: [
+                                  if (snap.hasData)
+                                    ClipRRect(
+                                      borderRadius: const BorderRadius.vertical(
+                                        top: Radius.circular(24),
+                                      ),
+                                      child: CachedNetworkImage(
+                                        imageUrl: snap.data!,
+                                        fit: BoxFit.cover,
+                                        width: double.infinity,
+                                        height: maxHeight * 0.4,
+                                      ),
+                                    )
+                                  else
+                                    SizedBox(
+                                      height: maxHeight * 0.4,
+                                      child: const Center(
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                        ),
+                                      ),
+                                    ),
+                                  Positioned(
+                                    right: 8,
+                                    top: 8,
+                                    child: IconButton(
+                                      icon: const Icon(
+                                        Icons.close_rounded,
+                                        color: Colors.white,
+                                        size: 28,
+                                      ),
+                                      onPressed: () => Navigator.pop(context),
+                                    ),
+                                  ),
+                                ],
+                              ),
+
+                              // 🔹 Tiêu đề + nội dung cuộn
+                              Expanded(
+                                child: Padding(
+                                  padding: const EdgeInsets.all(16),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        widget.item.title,
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 18,
+                                          color: AppTheme.ink,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 12),
+                                      // ✅ Chỉ phần text cuộn khi dài
+                                      Expanded(
+                                        child: SingleChildScrollView(
+                                          child: SelectableText(
+                                            widget.item.prompt,
+                                            style: const TextStyle(
+                                              fontSize: 15,
+                                              color: AppTheme.inkSoft,
+                                              height: 1.4,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+
+                              // 🔹 Nút hành động cố định dưới cùng
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                  vertical: 12,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withOpacity(0.95),
+                                  borderRadius: const BorderRadius.vertical(
+                                    bottom: Radius.circular(24),
+                                  ),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: AppTheme.inkSoft.withOpacity(0.1),
+                                      offset: const Offset(0, -1),
+                                      blurRadius: 4,
+                                    ),
+                                  ],
+                                ),
+                                child: Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceEvenly,
+                                  children: [
+                                    ElevatedButton.icon(
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: AppTheme.primary,
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            12,
+                                          ),
+                                        ),
+                                      ),
+                                      onPressed: () {
+                                        Clipboard.setData(
+                                          ClipboardData(
+                                            text: widget.item.prompt,
+                                          ),
+                                        );
+                                        ScaffoldMessenger.of(
+                                          widget.rootContext,
+                                        ).showSnackBar(
+                                          const SnackBar(
+                                            content: Text(
+                                              '✅ Đã copy prompt vào clipboard!',
+                                            ),
+                                            behavior: SnackBarBehavior.floating,
+                                            duration: Duration(seconds: 2),
+                                          ),
+                                        );
+                                      },
+                                      icon: const Icon(
+                                        Icons.copy,
+                                        size: 18,
+                                        color: Colors.white,
+                                      ),
+                                      label: const Text(
+                                        'Copy Prompt',
+                                        style: TextStyle(color: Colors.white),
+                                      ),
+                                    ),
+                                    ElevatedButton.icon(
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: AppTheme.primarySoft,
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            12,
+                                          ),
+                                        ),
+                                      ),
+                                      onPressed: () {
+                                        final text =
+                                            '${widget.item.title}\n\n${widget.item.prompt}';
+                                        Share.share(text);
+                                      },
+                                      icon: const Icon(
+                                        Icons.share,
+                                        size: 18,
+                                        color: Colors.white,
+                                      ),
+                                      label: const Text(
+                                        'Chia sẻ',
+                                        style: TextStyle(color: Colors.white),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          );
+                        },
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+        );
+      },
+      transitionBuilder: (_, anim, __, child) {
+        return FadeTransition(
+          opacity: CurvedAnimation(parent: anim, curve: Curves.easeInOut),
+          child: ScaleTransition(
+            scale: Tween<double>(
+              begin: 0.95,
+              end: 1.0,
+            ).animate(CurvedAnimation(parent: anim, curve: Curves.easeOutBack)),
+            child: child,
+          ),
+        );
+      },
+      transitionDuration: const Duration(milliseconds: 300),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    return MouseRegion(
-      onEnter: (_) => setState(() => _hovering = true),
-      onExit: (_) => setState(() => _hovering = false),
-      child: GestureDetector(
-        onLongPressStart: (_) => setState(() => _hovering = true),
-        onLongPressEnd: (_) => setState(() => _hovering = false),
-        child: AnimatedOpacity(
-          duration: const Duration(milliseconds: 200),
-          opacity: _hovering ? 0.95 : 1,
-          child: AnimatedScale(
-            duration: const Duration(milliseconds: 200),
-            scale: _hovering ? 1.03 : 1.0,
-            child: FadeTransition(
-              opacity: _fadeAnim,
-              child: ScaleTransition(
-                scale: _scaleAnim,
-                child: Card(
-                  elevation: _hovering ? 8 : 0,
-                  shadowColor:
-                  _hovering ? AppTheme.primarySoft.withOpacity(0.4) : null,
-                  clipBehavior: Clip.antiAlias,
-                  child: Column(
-                    children: [
-                      Expanded(
-                        child: FutureBuilder<String>(
-                          future: _resolveImage(widget.item.image),
-                          builder: (context, snap) {
-                            if (!snap.hasData) {
-                              return Container(
-                                color: AppTheme.cream,
-                                child: const Center(
-                                  child:
-                                  CircularProgressIndicator(strokeWidth: 2),
-                                ),
-                              );
-                            }
-                            return CachedNetworkImage(
-                              imageUrl: snap.data!,
-                              fit: BoxFit.cover,
-                              width: double.infinity,
-                              height: double.infinity,
-                              fadeInDuration:
-                              const Duration(milliseconds: 300),
-                            );
-                          },
-                        ),
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.all(8),
-                        child: Text(
-                          widget.item.title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            color: AppTheme.ink,
+    return GestureDetector(
+      onTap: () => _showDetail(context),
+      child: FadeTransition(
+        opacity: _fadeAnim,
+        child: ScaleTransition(
+          scale: _scaleAnim,
+          child: Card(
+            clipBehavior: Clip.antiAlias,
+            elevation: 2,
+            child: Column(
+              children: [
+                Expanded(
+                  child: FutureBuilder<String>(
+                    future: _resolveImage(widget.item.image),
+                    builder: (context, snap) {
+                      if (!snap.hasData) {
+                        return Container(
+                          color: AppTheme.cream,
+                          child: const Center(
+                            child: CircularProgressIndicator(strokeWidth: 2),
                           ),
-                        ),
-                      ),
-                    ],
+                        );
+                      }
+                      return CachedNetworkImage(
+                        imageUrl: snap.data!,
+                        fit: BoxFit.cover,
+                        width: double.infinity,
+                        height: double.infinity,
+                      );
+                    },
                   ),
                 ),
-              ),
+                Padding(
+                  padding: const EdgeInsets.all(8),
+                  child: Text(
+                    widget.item.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: AppTheme.ink,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         ),
@@ -495,11 +712,16 @@ class _EmptyState extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: const [
-          Icon(Icons.insert_emoticon_outlined,
-              size: 40, color: AppTheme.inkSoft),
+          Icon(
+            Icons.insert_emoticon_outlined,
+            size: 40,
+            color: AppTheme.inkSoft,
+          ),
           SizedBox(height: 12),
-          Text('Không tìm thấy prompt nào phù hợp',
-              style: TextStyle(fontWeight: FontWeight.w700)),
+          Text(
+            'Không tìm thấy prompt nào phù hợp',
+            style: TextStyle(fontWeight: FontWeight.w700),
+          ),
           SizedBox(height: 6),
           Text('Hãy thử từ khoá khác nhé.'),
         ],
