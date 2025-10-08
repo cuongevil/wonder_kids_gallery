@@ -6,6 +6,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show Clipboard, ClipboardData;
+import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:http/http.dart' as http;
 import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -97,6 +98,56 @@ class PromptItem {
   );
 }
 
+/// 🧩 Quản lý AppOpenAd hiển thị 1 lần/ngày
+class AppOpenAdManager {
+  static AppOpenAd? _appOpenAd;
+  static bool _isShowingAd = false;
+  static const adUnitId = 'ca-app-pub-4467146889101185/4787169345';
+  static const _lastShownKey = 'last_app_open_ad_date';
+
+  static Future<void> showAdIfAllowed() async {
+    final prefs = await SharedPreferences.getInstance();
+    final today = DateTime.now();
+    final lastShown = prefs.getString(_lastShownKey);
+
+    if (lastShown != null && lastShown == _formatDate(today)) {
+      debugPrint("✅ AppOpenAd đã hiển thị hôm nay, bỏ qua.");
+      return;
+    }
+
+    await _loadAd();
+
+    if (_appOpenAd != null && !_isShowingAd) {
+      _isShowingAd = true;
+      _appOpenAd!.fullScreenContentCallback = FullScreenContentCallback(
+        onAdDismissedFullScreenContent: (ad) {
+          _isShowingAd = false;
+          ad.dispose();
+          prefs.setString(_lastShownKey, _formatDate(today));
+          _loadAd();
+        },
+      );
+      _appOpenAd!.show();
+    } else {
+      debugPrint("⚠️ Không có AppOpenAd khả dụng.");
+    }
+  }
+
+  static Future<void> _loadAd() async {
+    await AppOpenAd.load(
+      adUnitId: adUnitId,
+      request: const AdRequest(),
+      adLoadCallback: AppOpenAdLoadCallback(
+        onAdLoaded: (ad) => _appOpenAd = ad,
+        onAdFailedToLoad: (error) => _appOpenAd = null,
+      ),
+    );
+  }
+
+  static String _formatDate(DateTime date) =>
+      "${date.year}-${date.month}-${date.day}";
+}
+
 /// 🖼️ Màn hình chính Wonder Kids Gallery
 class GalleryScreen extends StatefulWidget {
   const GalleryScreen({super.key});
@@ -113,17 +164,20 @@ class _GalleryScreenState extends State<GalleryScreen>
   List<PromptItem> all = [];
   List<PromptItem> visible = [];
   String? updatedAt;
-
   bool loading = true;
   bool isLoadingMore = false;
   bool hasMore = true;
   String? error;
-
   final int batchSize = 30;
 
   late AnimationController _fadeCtrl;
   late Animation<double> _fadeAnim;
   late Animation<Offset> _slideAnim;
+
+  // Ad fields
+  NativeAd? _nativeAd;
+  bool _isNativeAdLoaded = false;
+  int _scrollCounter = 0;
 
   @override
   void initState() {
@@ -137,16 +191,19 @@ class _GalleryScreenState extends State<GalleryScreen>
       begin: const Offset(0, 0.3),
       end: Offset.zero,
     ).animate(CurvedAnimation(parent: _fadeCtrl, curve: Curves.easeOut));
-
     _loadTrending();
     _scroll.addListener(_onScroll);
+    _initAppOpenAd(); // ✅ hiển thị quảng cáo khi mở app
   }
+
+  Future<void> _initAppOpenAd() async => AppOpenAdManager.showAdIfAllowed();
 
   @override
   void dispose() {
     _q.dispose();
     _scroll.dispose();
     _fadeCtrl.dispose();
+    _nativeAd?.dispose();
     super.dispose();
   }
 
@@ -154,6 +211,23 @@ class _GalleryScreenState extends State<GalleryScreen>
     if (_scroll.position.pixels >= _scroll.position.maxScrollExtent - 200) {
       _loadMore();
     }
+    _scrollCounter++;
+    if (_scrollCounter % 10 == 0) _loadNativeAd(); // ✅ sau mỗi 10 ảnh
+  }
+
+  void _loadNativeAd() {
+    _nativeAd = NativeAd(
+      adUnitId: 'ca-app-pub-4467146889101185/3987741929',
+      factoryId: 'listTile',
+      request: const AdRequest(),
+      listener: NativeAdListener(
+        onAdLoaded: (ad) => setState(() => _isNativeAdLoaded = true),
+        onAdFailedToLoad: (ad, error) {
+          ad.dispose();
+          _isNativeAdLoaded = false;
+        },
+      ),
+    )..load();
   }
 
   Future<void> _loadTrending({bool bustCache = false}) async {
@@ -165,7 +239,6 @@ class _GalleryScreenState extends State<GalleryScreen>
       hasMore = true;
       _fadeCtrl.reset();
     });
-
     final prefs = await SharedPreferences.getInstance();
     final cached = prefs.getString('prompts_cache');
     final cachedVersion = prefs.getString('prompts_version');
@@ -176,14 +249,11 @@ class _GalleryScreenState extends State<GalleryScreen>
       final url = await ref.getDownloadURL();
       final uri = Uri.parse('$url?t=${DateTime.now().millisecondsSinceEpoch}');
       final res = await http.get(uri);
-
       if (res.statusCode == 200) {
         final remoteData = jsonDecode(res.body);
         final remoteVersion = remoteData['updatedAt']?.toString();
-
         if (cached != null && !bustCache && cachedVersion == remoteVersion) {
-          final data = jsonDecode(cached);
-          _parseData(data, cachedUpdatedAt);
+          _parseData(jsonDecode(cached), cachedUpdatedAt);
         } else {
           _parseData(remoteData, remoteVersion);
           await prefs.setString('prompts_cache', res.body);
@@ -195,13 +265,11 @@ class _GalleryScreenState extends State<GalleryScreen>
       }
     } catch (e) {
       if (cached != null) {
-        final data = jsonDecode(cached);
-        _parseData(data, cachedUpdatedAt);
+        _parseData(jsonDecode(cached), cachedUpdatedAt);
       } else {
         error = 'Không thể tải dữ liệu: $e';
       }
     }
-
     setState(() => loading = false);
     _fadeCtrl.forward();
   }
@@ -211,7 +279,6 @@ class _GalleryScreenState extends State<GalleryScreen>
         .map((e) => PromptItem.fromJson(e))
         .toList();
     items.sort((a, b) => b.id.compareTo(a.id));
-
     all = items;
     visible = all.take(batchSize).toList();
     hasMore = all.length > batchSize;
@@ -222,7 +289,6 @@ class _GalleryScreenState extends State<GalleryScreen>
     if (isLoadingMore || !hasMore) return;
     setState(() => isLoadingMore = true);
     await Future.delayed(const Duration(milliseconds: 250));
-
     final nextCount = visible.length + batchSize;
     if (nextCount < all.length) {
       setState(() => visible = all.take(nextCount).toList());
@@ -232,7 +298,6 @@ class _GalleryScreenState extends State<GalleryScreen>
         hasMore = false;
       });
     }
-
     setState(() => isLoadingMore = false);
   }
 
@@ -245,7 +310,6 @@ class _GalleryScreenState extends State<GalleryScreen>
       });
       return;
     }
-
     final results = all
         .where((it) => (it.title + ' ' + it.prompt).toLowerCase().contains(q))
         .toList();
@@ -263,7 +327,7 @@ class _GalleryScreenState extends State<GalleryScreen>
       data: AppTheme.light(),
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('Wonder Kids Gallery'),
+          title: const Text('Khám phá ảnh'),
           actions: [
             IconButton(
               tooltip: 'Làm mới',
@@ -321,11 +385,18 @@ class _GalleryScreenState extends State<GalleryScreen>
                       duration: const Duration(milliseconds: 300),
                       child: visible.isEmpty
                           ? const _EmptyState()
-                          : _GalleryGrid(
-                              items: visible,
-                              rootContext: context, // ✅ truyền context gốc
-                            ),
+                          : _GalleryGrid(items: visible, rootContext: context),
                     ),
+                    if (_isNativeAdLoaded)
+                      Container(
+                        margin: const EdgeInsets.all(12),
+                        height: 100,
+                        decoration: BoxDecoration(
+                          color: Colors.purple[50],
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: AdWidget(ad: _nativeAd!),
+                      ),
                     if (isLoadingMore)
                       const Padding(
                         padding: EdgeInsets.all(16),

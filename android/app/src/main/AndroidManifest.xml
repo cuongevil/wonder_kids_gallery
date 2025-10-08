@@ -3,6 +3,12 @@
         android:label="wonder_kids_gallery"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
+
+        <!-- 👇 Thêm dòng meta-data này -->
+        <meta-data
+            android:name="com.google.android.gms.ads.APPLICATION_ID"
+            android:value="ca-app-pub-4467146889101185~7469173006"/>
+
         <activity
             android:name=".MainActivity"
             android:exported="true"
