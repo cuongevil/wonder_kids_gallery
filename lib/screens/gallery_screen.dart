@@ -321,7 +321,10 @@ class _GalleryScreenState extends State<GalleryScreen>
                       duration: const Duration(milliseconds: 300),
                       child: visible.isEmpty
                           ? const _EmptyState()
-                          : _GalleryGrid(items: visible),
+                          : _GalleryGrid(
+                              items: visible,
+                              rootContext: context, // ✅ truyền context gốc
+                            ),
                     ),
                     if (isLoadingMore)
                       const Padding(
@@ -355,8 +358,9 @@ class _GalleryScreenState extends State<GalleryScreen>
 /// 🧩 Lưới ảnh
 class _GalleryGrid extends StatelessWidget {
   final List<PromptItem> items;
+  final BuildContext rootContext;
 
-  const _GalleryGrid({required this.items});
+  const _GalleryGrid({required this.items, required this.rootContext});
 
   @override
   Widget build(BuildContext context) {
@@ -370,12 +374,13 @@ class _GalleryGrid extends StatelessWidget {
         childAspectRatio: .9,
       ),
       itemCount: items.length,
-      itemBuilder: (_, i) => _GalleryCard(item: items[i], rootContext: context),
+      itemBuilder: (_, i) =>
+          _GalleryCard(item: items[i], rootContext: rootContext),
     );
   }
 }
 
-/// 🖼️ Card ảnh + popup chi tiết
+/// 🖼️ Card ảnh với hiệu ứng + popup chi tiết
 class _GalleryCard extends StatefulWidget {
   final PromptItem item;
   final BuildContext rootContext;
@@ -391,6 +396,7 @@ class _GalleryCardState extends State<_GalleryCard>
   late AnimationController _animCtrl;
   late Animation<double> _fadeAnim;
   late Animation<double> _scaleAnim;
+  bool _hovering = false;
 
   @override
   void initState() {
@@ -416,281 +422,290 @@ class _GalleryCardState extends State<_GalleryCard>
     super.dispose();
   }
 
-  void _showDetail(BuildContext context) {
-    showGeneralDialog(
-      context: context,
-      barrierDismissible: true,
-      barrierLabel: 'Đóng popup',
-      barrierColor: Colors.black45,
-      pageBuilder: (_, __, ___) {
-        return GestureDetector(
-          onVerticalDragUpdate: (details) {
-            if (details.primaryDelta != null && details.primaryDelta! > 12) {
-              Navigator.of(context).pop();
-            }
-          },
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-            child: Center(
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  final maxHeight = constraints.maxHeight * 0.8;
-                  return Dialog(
-                    insetPadding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 24,
-                    ),
-                    backgroundColor: Colors.white.withOpacity(0.92),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(24),
-                    ),
-                    child: ConstrainedBox(
-                      constraints: BoxConstraints(maxHeight: maxHeight),
-                      child: FutureBuilder<String>(
-                        future: _resolveImage(widget.item.image),
-                        builder: (context, snap) {
-                          return Column(
-                            children: [
-                              // 🔹 Ảnh trên cùng
-                              Stack(
-                                children: [
-                                  if (snap.hasData)
-                                    ClipRRect(
-                                      borderRadius: const BorderRadius.vertical(
-                                        top: Radius.circular(24),
-                                      ),
-                                      child: CachedNetworkImage(
-                                        imageUrl: snap.data!,
-                                        fit: BoxFit.cover,
-                                        width: double.infinity,
-                                        height: maxHeight * 0.4,
-                                      ),
-                                    )
-                                  else
-                                    SizedBox(
-                                      height: maxHeight * 0.4,
-                                      child: const Center(
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                        ),
-                                      ),
-                                    ),
-                                  Positioned(
-                                    right: 8,
-                                    top: 8,
-                                    child: IconButton(
-                                      icon: const Icon(
-                                        Icons.close_rounded,
-                                        color: Colors.white,
-                                        size: 28,
-                                      ),
-                                      onPressed: () => Navigator.pop(context),
-                                    ),
-                                  ),
-                                ],
-                              ),
-
-                              // 🔹 Tiêu đề + nội dung cuộn
-                              Expanded(
-                                child: Padding(
-                                  padding: const EdgeInsets.all(16),
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        widget.item.title,
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 18,
-                                          color: AppTheme.ink,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 12),
-                                      // ✅ Chỉ phần text cuộn khi dài
-                                      Expanded(
-                                        child: SingleChildScrollView(
-                                          child: SelectableText(
-                                            widget.item.prompt,
-                                            style: const TextStyle(
-                                              fontSize: 15,
-                                              color: AppTheme.inkSoft,
-                                              height: 1.4,
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-
-                              // 🔹 Nút hành động cố định dưới cùng
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 16,
-                                  vertical: 12,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: Colors.white.withOpacity(0.95),
-                                  borderRadius: const BorderRadius.vertical(
-                                    bottom: Radius.circular(24),
-                                  ),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: AppTheme.inkSoft.withOpacity(0.1),
-                                      offset: const Offset(0, -1),
-                                      blurRadius: 4,
-                                    ),
-                                  ],
-                                ),
-                                child: Row(
-                                  mainAxisAlignment:
-                                      MainAxisAlignment.spaceEvenly,
-                                  children: [
-                                    ElevatedButton.icon(
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: AppTheme.primary,
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(
-                                            12,
-                                          ),
-                                        ),
-                                      ),
-                                      onPressed: () {
-                                        Clipboard.setData(
-                                          ClipboardData(
-                                            text: widget.item.prompt,
-                                          ),
-                                        );
-                                        ScaffoldMessenger.of(
-                                          widget.rootContext,
-                                        ).showSnackBar(
-                                          const SnackBar(
-                                            content: Text(
-                                              '✅ Đã copy prompt vào clipboard!',
-                                            ),
-                                            behavior: SnackBarBehavior.floating,
-                                            duration: Duration(seconds: 2),
-                                          ),
-                                        );
-                                      },
-                                      icon: const Icon(
-                                        Icons.copy,
-                                        size: 18,
-                                        color: Colors.white,
-                                      ),
-                                      label: const Text(
-                                        'Copy Prompt',
-                                        style: TextStyle(color: Colors.white),
-                                      ),
-                                    ),
-                                    ElevatedButton.icon(
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: AppTheme.primarySoft,
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(
-                                            12,
-                                          ),
-                                        ),
-                                      ),
-                                      onPressed: () {
-                                        final text =
-                                            '${widget.item.title}\n\n${widget.item.prompt}';
-                                        Share.share(text);
-                                      },
-                                      icon: const Icon(
-                                        Icons.share,
-                                        size: 18,
-                                        color: Colors.white,
-                                      ),
-                                      label: const Text(
-                                        'Chia sẻ',
-                                        style: TextStyle(color: Colors.white),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          );
-                        },
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ),
-          ),
-        );
-      },
-      transitionBuilder: (_, anim, __, child) {
-        return FadeTransition(
-          opacity: CurvedAnimation(parent: anim, curve: Curves.easeInOut),
-          child: ScaleTransition(
-            scale: Tween<double>(
-              begin: 0.95,
-              end: 1.0,
-            ).animate(CurvedAnimation(parent: anim, curve: Curves.easeOutBack)),
-            child: child,
-          ),
-        );
-      },
-      transitionDuration: const Duration(milliseconds: 300),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () => _showDetail(context),
-      child: FadeTransition(
-        opacity: _fadeAnim,
-        child: ScaleTransition(
-          scale: _scaleAnim,
-          child: Card(
-            clipBehavior: Clip.antiAlias,
-            elevation: 2,
-            child: Column(
-              children: [
-                Expanded(
-                  child: FutureBuilder<String>(
-                    future: _resolveImage(widget.item.image),
-                    builder: (context, snap) {
-                      if (!snap.hasData) {
-                        return Container(
-                          color: AppTheme.cream,
-                          child: const Center(
-                            child: CircularProgressIndicator(strokeWidth: 2),
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hovering = true),
+      onExit: (_) => setState(() => _hovering = false),
+      child: GestureDetector(
+        onTap: () => _showDetail(context),
+        onLongPressStart: (_) => setState(() => _hovering = true),
+        onLongPressEnd: (_) => setState(() => _hovering = false),
+        child: AnimatedOpacity(
+          duration: const Duration(milliseconds: 200),
+          opacity: _hovering ? 0.95 : 1,
+          child: AnimatedScale(
+            duration: const Duration(milliseconds: 200),
+            scale: _hovering ? 1.03 : 1.0,
+            child: FadeTransition(
+              opacity: _fadeAnim,
+              child: ScaleTransition(
+                scale: _scaleAnim,
+                child: Card(
+                  elevation: _hovering ? 8 : 0,
+                  shadowColor: _hovering
+                      ? AppTheme.primarySoft.withOpacity(0.4)
+                      : null,
+                  clipBehavior: Clip.antiAlias,
+                  child: Column(
+                    children: [
+                      Expanded(
+                        child: FutureBuilder<String>(
+                          future: _resolveImage(widget.item.image),
+                          builder: (context, snap) {
+                            if (!snap.hasData) {
+                              return Container(
+                                color: AppTheme.cream,
+                                child: const Center(
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                ),
+                              );
+                            }
+                            return CachedNetworkImage(
+                              imageUrl: snap.data!,
+                              fit: BoxFit.cover,
+                              width: double.infinity,
+                              height: double.infinity,
+                              fadeInDuration: const Duration(milliseconds: 300),
+                            );
+                          },
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.all(8),
+                        child: Text(
+                          widget.item.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: AppTheme.ink,
                           ),
-                        );
-                      }
-                      return CachedNetworkImage(
-                        imageUrl: snap.data!,
-                        fit: BoxFit.cover,
-                        width: double.infinity,
-                        height: double.infinity,
-                      );
-                    },
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                Padding(
-                  padding: const EdgeInsets.all(8),
-                  child: Text(
-                    widget.item.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: AppTheme.ink,
-                    ),
-                  ),
-                ),
-              ],
+              ),
             ),
           ),
         ),
       ),
+    );
+  }
+
+  // 🪩 Popup chi tiết ảnh + prompt
+  void _showDetail(BuildContext context) {
+    showGeneralDialog(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: 'Đóng',
+      barrierColor: Colors.black45,
+      pageBuilder: (_, __, ___) => GestureDetector(
+        onVerticalDragUpdate: (details) {
+          if (details.primaryDelta != null && details.primaryDelta! > 12) {
+            Navigator.of(context).pop();
+          }
+        },
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+          child: Center(
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final maxHeight = constraints.maxHeight * 0.8;
+                return Dialog(
+                  insetPadding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 24,
+                  ),
+                  backgroundColor: Colors.white.withOpacity(0.92),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(24),
+                  ),
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(maxHeight: maxHeight),
+                    child: FutureBuilder<String>(
+                      future: _resolveImage(widget.item.image),
+                      builder: (context, snap) {
+                        return Column(
+                          children: [
+                            // Ảnh trên cùng
+                            Stack(
+                              children: [
+                                if (snap.hasData)
+                                  ClipRRect(
+                                    borderRadius: const BorderRadius.vertical(
+                                      top: Radius.circular(24),
+                                    ),
+                                    child: CachedNetworkImage(
+                                      imageUrl: snap.data!,
+                                      fit: BoxFit.cover,
+                                      width: double.infinity,
+                                      height: maxHeight * 0.4,
+                                    ),
+                                  )
+                                else
+                                  SizedBox(
+                                    height: maxHeight * 0.4,
+                                    child: const Center(
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    ),
+                                  ),
+                                Positioned(
+                                  right: 8,
+                                  top: 8,
+                                  child: IconButton(
+                                    icon: const Icon(
+                                      Icons.close_rounded,
+                                      color: Colors.white,
+                                      size: 28,
+                                    ),
+                                    onPressed: () => Navigator.pop(context),
+                                  ),
+                                ),
+                              ],
+                            ),
+
+                            // Tiêu đề + prompt có cuộn
+                            Expanded(
+                              child: Padding(
+                                padding: const EdgeInsets.all(16),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      widget.item.title,
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 18,
+                                        color: AppTheme.ink,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 12),
+                                    Expanded(
+                                      child: SingleChildScrollView(
+                                        child: SelectableText(
+                                          widget.item.prompt,
+                                          style: const TextStyle(
+                                            fontSize: 15,
+                                            color: AppTheme.inkSoft,
+                                            height: 1.4,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+
+                            // Nút cố định dưới cùng
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 12,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withOpacity(0.95),
+                                borderRadius: const BorderRadius.vertical(
+                                  bottom: Radius.circular(24),
+                                ),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: AppTheme.inkSoft.withOpacity(0.1),
+                                    offset: const Offset(0, -1),
+                                    blurRadius: 4,
+                                  ),
+                                ],
+                              ),
+                              child: Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceEvenly,
+                                children: [
+                                  ElevatedButton.icon(
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: AppTheme.primary,
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                    ),
+                                    onPressed: () {
+                                      Clipboard.setData(
+                                        ClipboardData(text: widget.item.prompt),
+                                      );
+                                      ScaffoldMessenger.of(
+                                        widget.rootContext,
+                                      ).showSnackBar(
+                                        const SnackBar(
+                                          content: Text(
+                                            '✅ Đã copy prompt vào clipboard!',
+                                          ),
+                                          behavior: SnackBarBehavior.floating,
+                                          duration: Duration(seconds: 2),
+                                        ),
+                                      );
+                                    },
+                                    icon: const Icon(
+                                      Icons.copy,
+                                      size: 18,
+                                      color: Colors.white,
+                                    ),
+                                    label: const Text(
+                                      'Copy Prompt',
+                                      style: TextStyle(color: Colors.white),
+                                    ),
+                                  ),
+                                  ElevatedButton.icon(
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: AppTheme.primarySoft,
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                    ),
+                                    onPressed: () {
+                                      final text =
+                                          '${widget.item.title}\n\n${widget.item.prompt}';
+                                      Share.share(text);
+                                    },
+                                    icon: const Icon(
+                                      Icons.share,
+                                      size: 18,
+                                      color: Colors.white,
+                                    ),
+                                    label: const Text(
+                                      'Chia sẻ',
+                                      style: TextStyle(color: Colors.white),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        );
+                      },
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ),
+      ),
+      transitionBuilder: (_, anim, __, child) => FadeTransition(
+        opacity: CurvedAnimation(parent: anim, curve: Curves.easeInOut),
+        child: ScaleTransition(
+          scale: Tween<double>(
+            begin: 0.95,
+            end: 1.0,
+          ).animate(CurvedAnimation(parent: anim, curve: Curves.easeOutBack)),
+          child: child,
+        ),
+      ),
+      transitionDuration: const Duration(milliseconds: 300),
     );
   }
 }
