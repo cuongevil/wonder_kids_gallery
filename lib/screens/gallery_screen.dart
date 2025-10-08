@@ -5,7 +5,7 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:shimmer/shimmer.dart'; // 👈 Thêm dòng này
+import 'package:shimmer/shimmer.dart';
 
 /// 🎨 Chủ đề pastel Wonder Kids
 class AppTheme {
@@ -366,52 +366,113 @@ class _GalleryGrid extends StatelessWidget {
   }
 }
 
-/// 🖼️ Card ảnh
-class _GalleryCard extends StatelessWidget {
+/// 🖼️ Card ảnh với hiệu ứng fade + zoom-in + hover sáng
+class _GalleryCard extends StatefulWidget {
   final PromptItem item;
   const _GalleryCard({required this.item});
 
   @override
+  State<_GalleryCard> createState() => _GalleryCardState();
+}
+
+class _GalleryCardState extends State<_GalleryCard>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _animCtrl;
+  late Animation<double> _fadeAnim;
+  late Animation<double> _scaleAnim;
+  bool _hovering = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _animCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 600),
+    );
+    _fadeAnim = CurvedAnimation(parent: _animCtrl, curve: Curves.easeInOut);
+    _scaleAnim = Tween<double>(begin: 0.95, end: 1.0).animate(
+      CurvedAnimation(parent: _animCtrl, curve: Curves.easeOutBack),
+    );
+    Future.delayed(
+      Duration(milliseconds: 100 + (50 * (widget.item.id.hashCode % 5))),
+          () => _animCtrl.forward(),
+    );
+  }
+
+  @override
+  void dispose() {
+    _animCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return Card(
-      clipBehavior: Clip.antiAlias,
-      child: Column(
-        children: [
-          Expanded(
-            child: FutureBuilder<String>(
-              future: _resolveImage(item.image),
-              builder: (context, snap) {
-                if (!snap.hasData) {
-                  return Container(
-                    color: AppTheme.cream,
-                    child: const Center(
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    ),
-                  );
-                }
-                return CachedNetworkImage(
-                  imageUrl: snap.data!,
-                  fit: BoxFit.cover,
-                  width: double.infinity,
-                  height: double.infinity,
-                  fadeInDuration: const Duration(milliseconds: 300),
-                );
-              },
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(8),
-            child: Text(
-              item.title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                fontWeight: FontWeight.bold,
-                color: AppTheme.ink,
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hovering = true),
+      onExit: (_) => setState(() => _hovering = false),
+      child: GestureDetector(
+        onLongPressStart: (_) => setState(() => _hovering = true),
+        onLongPressEnd: (_) => setState(() => _hovering = false),
+        child: AnimatedOpacity(
+          duration: const Duration(milliseconds: 200),
+          opacity: _hovering ? 0.95 : 1,
+          child: AnimatedScale(
+            duration: const Duration(milliseconds: 200),
+            scale: _hovering ? 1.03 : 1.0,
+            child: FadeTransition(
+              opacity: _fadeAnim,
+              child: ScaleTransition(
+                scale: _scaleAnim,
+                child: Card(
+                  elevation: _hovering ? 8 : 0,
+                  shadowColor:
+                  _hovering ? AppTheme.primarySoft.withOpacity(0.4) : null,
+                  clipBehavior: Clip.antiAlias,
+                  child: Column(
+                    children: [
+                      Expanded(
+                        child: FutureBuilder<String>(
+                          future: _resolveImage(widget.item.image),
+                          builder: (context, snap) {
+                            if (!snap.hasData) {
+                              return Container(
+                                color: AppTheme.cream,
+                                child: const Center(
+                                  child:
+                                  CircularProgressIndicator(strokeWidth: 2),
+                                ),
+                              );
+                            }
+                            return CachedNetworkImage(
+                              imageUrl: snap.data!,
+                              fit: BoxFit.cover,
+                              width: double.infinity,
+                              height: double.infinity,
+                              fadeInDuration:
+                              const Duration(milliseconds: 300),
+                            );
+                          },
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.all(8),
+                        child: Text(
+                          widget.item.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: AppTheme.ink,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ),
           ),
-        ],
+        ),
       ),
     );
   }
