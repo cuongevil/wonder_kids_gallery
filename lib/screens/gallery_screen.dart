@@ -33,6 +33,12 @@ class AppTheme {
         primary: primary,
       ),
       scaffoldBackgroundColor: cream,
+      visualDensity: VisualDensity.adaptivePlatformDensity,
+      textTheme: const TextTheme(
+        bodyMedium: TextStyle(fontFamily: 'Nunito', fontSize: 15),
+        labelLarge:
+        TextStyle(fontFamily: 'Nunito', fontWeight: FontWeight.w600),
+      ),
       appBarTheme: const AppBarTheme(
         backgroundColor: Colors.transparent,
         foregroundColor: ink,
@@ -110,10 +116,7 @@ class AppOpenAdManager {
     final today = DateTime.now();
     final lastShown = prefs.getString(_lastShownKey);
 
-    if (lastShown != null && lastShown == _formatDate(today)) {
-      debugPrint("✅ AppOpenAd đã hiển thị hôm nay, bỏ qua.");
-      return;
-    }
+    if (lastShown != null && lastShown == _formatDate(today)) return;
 
     await _loadAd();
 
@@ -128,8 +131,6 @@ class AppOpenAdManager {
         },
       );
       _appOpenAd!.show();
-    } else {
-      debugPrint("⚠️ Không có AppOpenAd khả dụng.");
     }
   }
 
@@ -174,7 +175,6 @@ class _GalleryScreenState extends State<GalleryScreen>
   late Animation<double> _fadeAnim;
   late Animation<Offset> _slideAnim;
 
-  // Ad fields
   NativeAd? _nativeAd;
   bool _isNativeAdLoaded = false;
   int _scrollCounter = 0;
@@ -187,13 +187,13 @@ class _GalleryScreenState extends State<GalleryScreen>
       duration: const Duration(milliseconds: 800),
     );
     _fadeAnim = CurvedAnimation(parent: _fadeCtrl, curve: Curves.easeInOut);
-    _slideAnim = Tween<Offset>(
-      begin: const Offset(0, 0.3),
-      end: Offset.zero,
-    ).animate(CurvedAnimation(parent: _fadeCtrl, curve: Curves.easeOut));
+    _slideAnim =
+        Tween<Offset>(begin: const Offset(0, 0.3), end: Offset.zero).animate(
+          CurvedAnimation(parent: _fadeCtrl, curve: Curves.easeOut),
+        );
     _loadTrending();
     _scroll.addListener(_onScroll);
-    _initAppOpenAd(); // ✅ hiển thị quảng cáo khi mở app
+    _initAppOpenAd();
   }
 
   Future<void> _initAppOpenAd() async => AppOpenAdManager.showAdIfAllowed();
@@ -207,12 +207,20 @@ class _GalleryScreenState extends State<GalleryScreen>
     super.dispose();
   }
 
+  Future<void> _clearCacheAndReload() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('prompts_cache');
+    await prefs.remove('prompts_meta');
+    debugPrint("🧹 Đã xóa cache local – sẽ tải lại từ Firebase");
+    _loadTrending(bustCache: true);
+  }
+
   void _onScroll() {
     if (_scroll.position.pixels >= _scroll.position.maxScrollExtent - 200) {
       _loadMore();
     }
     _scrollCounter++;
-    if (_scrollCounter % 10 == 0) _loadNativeAd(); // ✅ sau mỗi 10 ảnh
+    if (_scrollCounter % 10 == 0) _loadNativeAd();
   }
 
   void _loadNativeAd() {
@@ -230,7 +238,6 @@ class _GalleryScreenState extends State<GalleryScreen>
     )..load();
   }
 
-  /// 🌀 Tải file prompts_trending.json từ Firebase Storage (có cache thông minh)
   Future<void> _loadTrending({bool bustCache = false}) async {
     setState(() {
       loading = true;
@@ -243,7 +250,7 @@ class _GalleryScreenState extends State<GalleryScreen>
 
     final prefs = await SharedPreferences.getInstance();
     final cachedJson = prefs.getString('prompts_cache');
-    final cachedMeta = prefs.getString('prompts_meta'); // lưu timestamp cập nhật gần nhất
+    final cachedMeta = prefs.getString('prompts_meta');
 
     try {
       final ref = FirebaseStorage.instance.ref('prompts/prompts_trending.json');
@@ -253,44 +260,35 @@ class _GalleryScreenState extends State<GalleryScreen>
       final shouldReload = bustCache || cachedMeta != remoteUpdated;
 
       if (shouldReload) {
-        // 🔥 ép Firebase tải file thật mới (bỏ qua CDN cache)
         final url = await ref.getDownloadURL();
-        final uri = Uri.parse('$url?cacheBust=${DateTime.now().microsecondsSinceEpoch}');
-        final res = await http.get(
-          uri,
-          headers: {'Cache-Control': 'no-cache', 'Pragma': 'no-cache'},
-        );
+        final uri = Uri.parse(
+            '$url?cacheBust=${DateTime.now().microsecondsSinceEpoch}');
+        final res = await http.get(uri,
+            headers: {'Cache-Control': 'no-cache', 'Pragma': 'no-cache'});
 
         if (res.statusCode == 200) {
           final data = jsonDecode(res.body);
           _parseData(data, remoteUpdated);
-
-          // ✅ Cập nhật cache mới nhất
           await prefs.setString('prompts_cache', res.body);
           await prefs.setString('prompts_meta', remoteUpdated);
-          debugPrint('✅ Đã tải bản mới nhất từ Firebase (${meta.updated})');
         } else {
           throw Exception('HTTP ${res.statusCode}');
         }
       } else if (cachedJson != null) {
-        // ✅ Dùng cache cũ nếu file Firebase chưa thay đổi
-        debugPrint('🪄 Dùng cache local (Firebase chưa thay đổi)');
         _parseData(jsonDecode(cachedJson), cachedMeta);
       } else {
-        throw Exception('Không có dữ liệu cache để fallback');
+        throw Exception('Không có dữ liệu cache');
       }
     } catch (e) {
-      debugPrint('⚠️ Lỗi khi tải JSON: $e');
       if (cachedJson != null) {
         _parseData(jsonDecode(cachedJson), cachedMeta);
-        debugPrint('📦 Fallback sang cache cũ thành công.');
       } else {
         error = 'Không thể tải dữ liệu: $e';
       }
     }
 
     setState(() => loading = false);
-    _fadeCtrl.forward();
+    if (mounted) _fadeCtrl.forward();
   }
 
   void _parseData(Map<String, dynamic> data, String? version) {
@@ -346,12 +344,13 @@ class _GalleryScreenState extends State<GalleryScreen>
       data: AppTheme.light(),
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('Thư Viện Ảnh'),
+          title: const Text('🎨 Thư Viện Ảnh',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20)),
           actions: [
             IconButton(
-              tooltip: 'Tải lại dữ liệu',
-              onPressed: () => _loadTrending(bustCache: true),
-              icon: const Icon(Icons.refresh_rounded),
+              tooltip: 'Xóa cache & tải lại',
+              onPressed: _clearCacheAndReload,
+              icon: const Icon(Icons.delete_sweep_rounded),
             ),
           ],
         ),
@@ -359,52 +358,70 @@ class _GalleryScreenState extends State<GalleryScreen>
             ? const Center(child: CircularProgressIndicator())
             : (error != null)
             ? Center(child: Text(error!))
-            : RefreshIndicator(
+            : Column(
+          children: [
+            // 🧩 Header cố định
+            Container(
+              padding: const EdgeInsets.all(16),
+              color: AppTheme.cream,
+              child: Column(
+                children: [
+                  TextField(
+                    controller: _q,
+                    onChanged: (_) => _applyFilters(),
+                    decoration: const InputDecoration(
+                      prefixIcon:
+                      Icon(Icons.search_rounded),
+                      hintText:
+                      '🔍 Bé muốn tìm ảnh gì nè?',
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  if (updatedAt != null)
+                    FadeTransition(
+                      opacity: _fadeAnim,
+                      child: SlideTransition(
+                        position: _slideAnim,
+                        child: Shimmer.fromColors(
+                          baseColor:
+                          AppTheme.inkSoft.withOpacity(0.4),
+                          highlightColor:
+                          AppTheme.primarySoft.withOpacity(0.6),
+                          period: const Duration(seconds: 3),
+                          child: Center(
+                            child: Text(
+                              "🕓 Dữ liệu cập nhật: ${_formatDate(updatedAt!)}",
+                              style: const TextStyle(
+                                fontSize: 13,
+                                color: AppTheme.inkSoft,
+                                fontStyle: FontStyle.italic,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+
+            // 📜 Danh sách ảnh cuộn độc lập
+            Expanded(
+              child: RefreshIndicator(
                 onRefresh: _onRefresh,
                 color: AppTheme.primary,
                 child: ListView(
                   controller: _scroll,
                   padding: const EdgeInsets.all(16),
                   children: [
-                    TextField(
-                      controller: _q,
-                      onChanged: (_) => _applyFilters(),
-                      decoration: const InputDecoration(
-                        prefixIcon: Icon(Icons.search_rounded),
-                        hintText: 'Tìm kiếm...',
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    if (updatedAt != null)
-                      FadeTransition(
-                        opacity: _fadeAnim,
-                        child: SlideTransition(
-                          position: _slideAnim,
-                          child: Shimmer.fromColors(
-                            baseColor: AppTheme.inkSoft.withOpacity(0.4),
-                            highlightColor: AppTheme.primarySoft.withOpacity(
-                              0.6,
-                            ),
-                            period: const Duration(seconds: 3),
-                            child: Center(
-                              child: Text(
-                                "🕓 Dữ liệu cập nhật: ${_formatDate(updatedAt!)}",
-                                style: const TextStyle(
-                                  fontSize: 13,
-                                  color: AppTheme.inkSoft,
-                                  fontStyle: FontStyle.italic,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    const SizedBox(height: 8),
                     AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 300),
+                      duration:
+                      const Duration(milliseconds: 300),
                       child: visible.isEmpty
                           ? const _EmptyState()
-                          : _GalleryGrid(items: visible, rootContext: context),
+                          : _GalleryGrid(
+                          items: visible,
+                          rootContext: context),
                     ),
                     if (_isNativeAdLoaded)
                       Container(
@@ -412,7 +429,8 @@ class _GalleryScreenState extends State<GalleryScreen>
                         height: 100,
                         decoration: BoxDecoration(
                           color: Colors.purple[50],
-                          borderRadius: BorderRadius.circular(16),
+                          borderRadius:
+                          BorderRadius.circular(16),
                         ),
                         child: AdWidget(ad: _nativeAd!),
                       ),
@@ -420,17 +438,21 @@ class _GalleryScreenState extends State<GalleryScreen>
                       const Padding(
                         padding: EdgeInsets.all(16),
                         child: Center(
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        ),
+                            child:
+                            CircularProgressIndicator(strokeWidth: 2)),
                       ),
                     if (!hasMore && visible.isNotEmpty)
                       const Padding(
                         padding: EdgeInsets.all(16),
-                        child: Center(child: Text('🎉 Hết ảnh rồi nhé!')),
+                        child: Center(
+                            child: Text('🎉 Hết ảnh rồi nhé!')),
                       ),
                   ],
                 ),
               ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -445,7 +467,7 @@ class _GalleryScreenState extends State<GalleryScreen>
   }
 }
 
-/// 🧩 Lưới ảnh
+/// 🧩 Lưới ảnh pastel
 class _GalleryGrid extends StatelessWidget {
   final List<PromptItem> items;
   final BuildContext rootContext;
@@ -470,7 +492,7 @@ class _GalleryGrid extends StatelessWidget {
   }
 }
 
-/// 🖼️ Card ảnh với hiệu ứng + popup chi tiết
+/// 🖼️ Card ảnh pastel với animation riêng
 class _GalleryCard extends StatefulWidget {
   final PromptItem item;
   final BuildContext rootContext;
@@ -496,13 +518,15 @@ class _GalleryCardState extends State<_GalleryCard>
       duration: const Duration(milliseconds: 600),
     );
     _fadeAnim = CurvedAnimation(parent: _animCtrl, curve: Curves.easeInOut);
-    _scaleAnim = Tween<double>(
-      begin: 0.95,
-      end: 1.0,
-    ).animate(CurvedAnimation(parent: _animCtrl, curve: Curves.easeOutBack));
+    _scaleAnim = Tween<double>(begin: 0.95, end: 1.0).animate(
+      CurvedAnimation(parent: _animCtrl, curve: Curves.easeOutBack),
+    );
+
     Future.delayed(
       Duration(milliseconds: 100 + (50 * (widget.item.id.hashCode % 5))),
-      () => _animCtrl.forward(),
+          () {
+        if (mounted) _animCtrl.forward();
+      },
     );
   }
 
@@ -519,65 +543,66 @@ class _GalleryCardState extends State<_GalleryCard>
       onExit: (_) => setState(() => _hovering = false),
       child: GestureDetector(
         onTap: () => _showDetail(context),
-        onLongPressStart: (_) => setState(() => _hovering = true),
-        onLongPressEnd: (_) => setState(() => _hovering = false),
-        child: AnimatedOpacity(
-          duration: const Duration(milliseconds: 200),
-          opacity: _hovering ? 0.95 : 1,
-          child: AnimatedScale(
-            duration: const Duration(milliseconds: 200),
-            scale: _hovering ? 1.03 : 1.0,
-            child: FadeTransition(
-              opacity: _fadeAnim,
-              child: ScaleTransition(
-                scale: _scaleAnim,
-                child: Card(
-                  elevation: _hovering ? 8 : 0,
-                  shadowColor: _hovering
-                      ? AppTheme.primarySoft.withOpacity(0.4)
-                      : null,
-                  clipBehavior: Clip.antiAlias,
-                  child: Column(
-                    children: [
-                      Expanded(
-                        child: FutureBuilder<String>(
-                          future: _resolveImage(widget.item.image),
-                          builder: (context, snap) {
-                            if (!snap.hasData) {
-                              return Container(
-                                color: AppTheme.cream,
-                                child: const Center(
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                ),
-                              );
-                            }
-                            return CachedNetworkImage(
-                              imageUrl: snap.data!,
-                              fit: BoxFit.cover,
-                              width: double.infinity,
-                              height: double.infinity,
-                              fadeInDuration: const Duration(milliseconds: 300),
-                            );
-                          },
-                        ),
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.all(8),
-                        child: Text(
-                          widget.item.title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            color: AppTheme.ink,
-                          ),
-                        ),
-                      ),
-                    ],
+        child: FadeTransition(
+          opacity: _fadeAnim,
+          child: ScaleTransition(
+            scale: _scaleAnim,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              transform: Matrix4.identity()
+                ..scale(_hovering ? 1.03 : 1.0),
+              decoration: BoxDecoration(
+                color: AppTheme.lavender.withOpacity(0.08),
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: _hovering
+                    ? [
+                  BoxShadow(
+                    color: AppTheme.primarySoft.withOpacity(0.25),
+                    blurRadius: 8,
+                    offset: const Offset(0, 4),
+                  )
+                ]
+                    : [],
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: Column(
+                children: [
+                  Expanded(
+                    child: FutureBuilder<String>(
+                      future: _resolveImage(widget.item.image),
+                      builder: (context, snap) {
+                        if (!snap.hasData) {
+                          return Container(
+                            color: AppTheme.cream,
+                            child: const Center(
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                          );
+                        }
+                        return CachedNetworkImage(
+                          imageUrl: snap.data!,
+                          fit: BoxFit.cover,
+                          width: double.infinity,
+                          height: double.infinity,
+                        );
+                      },
+                    ),
                   ),
-                ),
+                  Padding(
+                    padding: const EdgeInsets.all(8),
+                    child: Text(
+                      widget.item.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        color: AppTheme.ink,
+                        fontSize: 15,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
@@ -586,221 +611,193 @@ class _GalleryCardState extends State<_GalleryCard>
     );
   }
 
-  // 🪩 Popup chi tiết ảnh + prompt
   void _showDetail(BuildContext context) {
     showGeneralDialog(
       context: context,
       barrierDismissible: true,
       barrierLabel: 'Đóng',
       barrierColor: Colors.black45,
-      pageBuilder: (_, __, ___) => GestureDetector(
-        onVerticalDragUpdate: (details) {
-          if (details.primaryDelta != null && details.primaryDelta! > 12) {
-            Navigator.of(context).pop();
-          }
-        },
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-          child: Center(
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                final maxHeight = constraints.maxHeight * 0.8;
-                return Dialog(
-                  insetPadding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 24,
-                  ),
-                  backgroundColor: Colors.white.withOpacity(0.92),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(24),
-                  ),
-                  child: ConstrainedBox(
-                    constraints: BoxConstraints(maxHeight: maxHeight),
-                    child: FutureBuilder<String>(
-                      future: _resolveImage(widget.item.image),
-                      builder: (context, snap) {
-                        return Column(
-                          children: [
-                            // Ảnh trên cùng
-                            Stack(
-                              children: [
-                                if (snap.hasData)
-                                  ClipRRect(
-                                    borderRadius: const BorderRadius.vertical(
-                                      top: Radius.circular(24),
-                                    ),
-                                    child: CachedNetworkImage(
-                                      imageUrl: snap.data!,
-                                      fit: BoxFit.cover,
-                                      width: double.infinity,
-                                      height: maxHeight * 0.4,
-                                    ),
-                                  )
-                                else
-                                  SizedBox(
-                                    height: maxHeight * 0.4,
-                                    child: const Center(
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                      ),
-                                    ),
-                                  ),
-                                Positioned(
-                                  right: 8,
-                                  top: 8,
-                                  child: IconButton(
-                                    icon: const Icon(
-                                      Icons.close_rounded,
-                                      color: Colors.white,
-                                      size: 28,
-                                    ),
-                                    onPressed: () => Navigator.pop(context),
-                                  ),
-                                ),
-                              ],
-                            ),
-
-                            // Tiêu đề + prompt có cuộn
-                            Expanded(
-                              child: Padding(
-                                padding: const EdgeInsets.all(16),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      widget.item.title,
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 18,
-                                        color: AppTheme.ink,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 12),
-                                    Expanded(
-                                      child: SingleChildScrollView(
-                                        child: SelectableText(
-                                          widget.item.prompt,
-                                          style: const TextStyle(
-                                            fontSize: 15,
-                                            color: AppTheme.inkSoft,
-                                            height: 1.4,
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-
-                            // Nút cố định dưới cùng
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 12,
-                              ),
-                              decoration: BoxDecoration(
-                                color: Colors.white.withOpacity(0.95),
-                                borderRadius: const BorderRadius.vertical(
-                                  bottom: Radius.circular(24),
-                                ),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: AppTheme.inkSoft.withOpacity(0.1),
-                                    offset: const Offset(0, -1),
-                                    blurRadius: 4,
-                                  ),
-                                ],
-                              ),
-                              child: Row(
-                                mainAxisAlignment:
-                                    MainAxisAlignment.spaceEvenly,
-                                children: [
-                                  ElevatedButton.icon(
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: AppTheme.primary,
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(12),
-                                      ),
-                                    ),
-                                    onPressed: () {
-                                      Clipboard.setData(
-                                        ClipboardData(text: widget.item.prompt),
-                                      );
-                                      ScaffoldMessenger.of(
-                                        widget.rootContext,
-                                      ).showSnackBar(
-                                        const SnackBar(
-                                          content: Text(
-                                            '✅ Đã copy prompt vào clipboard!',
-                                          ),
-                                          behavior: SnackBarBehavior.floating,
-                                          duration: Duration(seconds: 2),
-                                        ),
-                                      );
-                                    },
-                                    icon: const Icon(
-                                      Icons.copy,
-                                      size: 18,
-                                      color: Colors.white,
-                                    ),
-                                    label: const Text(
-                                      'Copy Prompt',
-                                      style: TextStyle(color: Colors.white),
-                                    ),
-                                  ),
-                                  ElevatedButton.icon(
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: AppTheme.primarySoft,
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(12),
-                                      ),
-                                    ),
-                                    onPressed: () {
-                                      final text =
-                                          '${widget.item.title}\n\n${widget.item.prompt}';
-                                      Share.share(text);
-                                    },
-                                    icon: const Icon(
-                                      Icons.share,
-                                      size: 18,
-                                      color: Colors.white,
-                                    ),
-                                    label: const Text(
-                                      'Chia sẻ',
-                                      style: TextStyle(color: Colors.white),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        );
-                      },
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-        ),
+      pageBuilder: (_, __, ___) => BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+        child: _buildDialog(context),
       ),
       transitionBuilder: (_, anim, __, child) => FadeTransition(
         opacity: CurvedAnimation(parent: anim, curve: Curves.easeInOut),
         child: ScaleTransition(
-          scale: Tween<double>(
-            begin: 0.95,
-            end: 1.0,
-          ).animate(CurvedAnimation(parent: anim, curve: Curves.easeOutBack)),
+          scale: Tween<double>(begin: 0.95, end: 1.0).animate(
+            CurvedAnimation(parent: anim, curve: Curves.easeOutBack),
+          ),
           child: child,
         ),
       ),
       transitionDuration: const Duration(milliseconds: 300),
     );
   }
+
+  Widget _buildDialog(BuildContext context) {
+    final maxHeight = MediaQuery.of(context).size.height * 0.8;
+    return Center(
+      child: Dialog(
+        insetPadding:
+        const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+        backgroundColor: Colors.white.withOpacity(0.92),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(24),
+        ),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: maxHeight),
+          child: FutureBuilder<String>(
+            future: _resolveImage(widget.item.image),
+            builder: (context, snap) {
+              return Column(
+                children: [
+                  Stack(
+                    children: [
+                      if (snap.hasData)
+                        ClipRRect(
+                          borderRadius: const BorderRadius.vertical(
+                            top: Radius.circular(24),
+                          ),
+                          child: CachedNetworkImage(
+                            imageUrl: snap.data!,
+                            fit: BoxFit.cover,
+                            width: double.infinity,
+                            height: maxHeight * 0.4,
+                          ),
+                        )
+                      else
+                        SizedBox(
+                          height: maxHeight * 0.4,
+                          child: const Center(
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                        ),
+                      Positioned(
+                        right: 8,
+                        top: 8,
+                        child: IconButton(
+                          icon: const Icon(Icons.close_rounded,
+                              color: Colors.white, size: 28),
+                          onPressed: () => Navigator.pop(context),
+                        ),
+                      ),
+                    ],
+                  ),
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            widget.item.title,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 20,
+                              color: AppTheme.ink,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Expanded(
+                            child: SingleChildScrollView(
+                              child: SelectableText(
+                                widget.item.prompt,
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  color: AppTheme.inkSoft,
+                                  height: 1.4,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.96),
+                      borderRadius: const BorderRadius.vertical(
+                          bottom: Radius.circular(24)),
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppTheme.primarySoft.withOpacity(0.1),
+                          blurRadius: 6,
+                          offset: const Offset(0, -2),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      mainAxisAlignment:
+                      MainAxisAlignment.spaceEvenly,
+                      children: [
+                        ElevatedButton.icon(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppTheme.primary,
+                            shape: RoundedRectangleBorder(
+                              borderRadius:
+                              BorderRadius.circular(14),
+                            ),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 14, vertical: 10),
+                          ),
+                          onPressed: () {
+                            Clipboard.setData(
+                                ClipboardData(text: widget.item.prompt));
+                            ScaffoldMessenger.of(widget.rootContext)
+                                .showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                    '✨ Đã sao chép vào clipboard!'),
+                                behavior: SnackBarBehavior.floating,
+                                duration: Duration(seconds: 2),
+                              ),
+                            );
+                          },
+                          icon: const Icon(Icons.copy,
+                              size: 18, color: Colors.white),
+                          label: const Text(
+                            'Sao chép',
+                            style: TextStyle(color: Colors.white),
+                          ),
+                        ),
+                        ElevatedButton.icon(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppTheme.primarySoft,
+                            shape: RoundedRectangleBorder(
+                              borderRadius:
+                              BorderRadius.circular(14),
+                            ),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 14, vertical: 10),
+                          ),
+                          onPressed: () {
+                            final text =
+                                '${widget.item.title}\n\n${widget.item.prompt}';
+                            Share.share(text);
+                          },
+                          icon: const Icon(Icons.share,
+                              size: 18, color: Colors.white),
+                          label: const Text(
+                            'Chia sẻ',
+                            style: TextStyle(color: Colors.white),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
 }
 
-/// 🧱 Trạng thái trống
 class _EmptyState extends StatelessWidget {
   const _EmptyState();
 
@@ -817,25 +814,19 @@ class _EmptyState extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: const [
-          Icon(
-            Icons.insert_emoticon_outlined,
-            size: 40,
-            color: AppTheme.inkSoft,
-          ),
+          Icon(Icons.insert_emoticon_outlined,
+              size: 40, color: AppTheme.inkSoft),
           SizedBox(height: 12),
-          Text(
-            'Không tìm thấy prompt nào phù hợp',
-            style: TextStyle(fontWeight: FontWeight.w700),
-          ),
+          Text('Không tìm thấy ảnh nào phù hợp',
+              style: TextStyle(fontWeight: FontWeight.w700)),
           SizedBox(height: 6),
-          Text('Hãy thử từ khoá khác nhé.'),
+          Text('Hãy thử từ khác nhé.'),
         ],
       ),
     );
   }
 }
 
-/// 🔗 Lấy ảnh từ Firebase
 Future<String> _resolveImage(String path) async {
   if (path.startsWith('http')) return path;
   final ref = FirebaseStorage.instance.ref(path);
