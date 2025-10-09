@@ -1,5 +1,6 @@
 import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 
@@ -8,15 +9,31 @@ import 'screens/gallery_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await MobileAds.instance.initialize();
+
+  // ✅ Khởi tạo Google Mobile Ads SDK và in kết quả ra log
+  await MobileAds.instance
+      .initialize()
+      .then((InitializationStatus status) {
+        for (final entry in status.adapterStatuses.entries) {
+          debugPrint(
+            '📢 Adapter: ${entry.key}, state: ${entry.value.state}, latency: ${entry.value.latency}',
+          );
+        }
+        debugPrint('✅ Google Mobile Ads SDK initialized thành công');
+      })
+      .catchError((e) {
+        debugPrint('❌ Lỗi khởi tạo MobileAds: $e');
+      });
+
+  // ✅ Khởi tạo Firebase
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
-  // ✅ Bật App Check (tạm dùng Debug Provider khi app chưa public)
+  // ✅ Bật App Check (Play Integrity ở release)
   await FirebaseAppCheck.instance.activate(
-    androidProvider: AndroidProvider.debug,
-    appleProvider: AppleProvider.debug,
-    // androidProvider: AndroidProvider.playIntegrity,
-    // appleProvider: AppleProvider.deviceCheck,
+    androidProvider: kDebugMode
+        ? AndroidProvider.debug
+        : AndroidProvider.playIntegrity,
+    appleProvider: kDebugMode ? AppleProvider.debug : AppleProvider.deviceCheck,
   );
 
   runApp(const WonderKidsGalleryApp());

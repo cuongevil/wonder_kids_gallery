@@ -327,7 +327,7 @@ class _GalleryScreenState extends State<GalleryScreen>
       data: AppTheme.light(),
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('Khám phá ảnh'),
+          title: const Text('Thư Viện Ảnh'),
           actions: [
             IconButton(
               tooltip: 'Làm mới',
@@ -352,7 +352,7 @@ class _GalleryScreenState extends State<GalleryScreen>
                       onChanged: (_) => _applyFilters(),
                       decoration: const InputDecoration(
                         prefixIcon: Icon(Icons.search_rounded),
-                        hintText: 'Tìm theo từ khoá / prompt...',
+                        hintText: 'Tìm kiếm...',
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -407,7 +407,7 @@ class _GalleryScreenState extends State<GalleryScreen>
                     if (!hasMore && visible.isNotEmpty)
                       const Padding(
                         padding: EdgeInsets.all(16),
-                        child: Center(child: Text('🎉 Hết prompt rồi nhé!')),
+                        child: Center(child: Text('🎉 Hết ảnh rồi nhé!')),
                       ),
                   ],
                 ),
