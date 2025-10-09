@@ -53,12 +53,6 @@ Podfile.lock
 windows/Flutter/ephemeral/
 macos/Flutter/ephemeral/
 
-# Symbolication related
-app.*.symbols
-
-# Obfuscation related
-app.*.map.json
-
 # Generated files
 Generated.xcconfig
 

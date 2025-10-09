@@ -230,6 +230,7 @@ class _GalleryScreenState extends State<GalleryScreen>
     )..load();
   }
 
+  /// 🌀 Tải file prompts_trending.json từ Firebase Storage (có cache thông minh)
   Future<void> _loadTrending({bool bustCache = false}) async {
     setState(() {
       loading = true;
@@ -239,37 +240,55 @@ class _GalleryScreenState extends State<GalleryScreen>
       hasMore = true;
       _fadeCtrl.reset();
     });
+
     final prefs = await SharedPreferences.getInstance();
-    final cached = prefs.getString('prompts_cache');
-    final cachedVersion = prefs.getString('prompts_version');
-    final cachedUpdatedAt = prefs.getString('prompts_updatedAt');
+    final cachedJson = prefs.getString('prompts_cache');
+    final cachedMeta = prefs.getString('prompts_meta'); // lưu timestamp cập nhật gần nhất
 
     try {
       final ref = FirebaseStorage.instance.ref('prompts/prompts_trending.json');
-      final url = await ref.getDownloadURL();
-      final uri = Uri.parse('$url?t=${DateTime.now().millisecondsSinceEpoch}');
-      final res = await http.get(uri);
-      if (res.statusCode == 200) {
-        final remoteData = jsonDecode(res.body);
-        final remoteVersion = remoteData['updatedAt']?.toString();
-        if (cached != null && !bustCache && cachedVersion == remoteVersion) {
-          _parseData(jsonDecode(cached), cachedUpdatedAt);
-        } else {
-          _parseData(remoteData, remoteVersion);
+      final meta = await ref.getMetadata();
+      final remoteUpdated = meta.updated?.toIso8601String() ?? '';
+
+      final shouldReload = bustCache || cachedMeta != remoteUpdated;
+
+      if (shouldReload) {
+        // 🔥 ép Firebase tải file thật mới (bỏ qua CDN cache)
+        final url = await ref.getDownloadURL();
+        final uri = Uri.parse('$url?cacheBust=${DateTime.now().microsecondsSinceEpoch}');
+        final res = await http.get(
+          uri,
+          headers: {'Cache-Control': 'no-cache', 'Pragma': 'no-cache'},
+        );
+
+        if (res.statusCode == 200) {
+          final data = jsonDecode(res.body);
+          _parseData(data, remoteUpdated);
+
+          // ✅ Cập nhật cache mới nhất
           await prefs.setString('prompts_cache', res.body);
-          await prefs.setString('prompts_version', remoteVersion ?? '');
-          await prefs.setString('prompts_updatedAt', remoteVersion ?? '');
+          await prefs.setString('prompts_meta', remoteUpdated);
+          debugPrint('✅ Đã tải bản mới nhất từ Firebase (${meta.updated})');
+        } else {
+          throw Exception('HTTP ${res.statusCode}');
         }
+      } else if (cachedJson != null) {
+        // ✅ Dùng cache cũ nếu file Firebase chưa thay đổi
+        debugPrint('🪄 Dùng cache local (Firebase chưa thay đổi)');
+        _parseData(jsonDecode(cachedJson), cachedMeta);
       } else {
-        throw Exception('HTTP ${res.statusCode}');
+        throw Exception('Không có dữ liệu cache để fallback');
       }
     } catch (e) {
-      if (cached != null) {
-        _parseData(jsonDecode(cached), cachedUpdatedAt);
+      debugPrint('⚠️ Lỗi khi tải JSON: $e');
+      if (cachedJson != null) {
+        _parseData(jsonDecode(cachedJson), cachedMeta);
+        debugPrint('📦 Fallback sang cache cũ thành công.');
       } else {
         error = 'Không thể tải dữ liệu: $e';
       }
     }
+
     setState(() => loading = false);
     _fadeCtrl.forward();
   }
@@ -330,7 +349,7 @@ class _GalleryScreenState extends State<GalleryScreen>
           title: const Text('Thư Viện Ảnh'),
           actions: [
             IconButton(
-              tooltip: 'Làm mới',
+              tooltip: 'Tải lại dữ liệu',
               onPressed: () => _loadTrending(bustCache: true),
               icon: const Icon(Icons.refresh_rounded),
             ),
